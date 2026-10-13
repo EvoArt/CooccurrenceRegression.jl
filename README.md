@@ -83,6 +83,16 @@ chn = cooccurrence_regression(X, Y, g)
 chn = cooccurrence_regression(X, Y, g; pooled=true)
 ```
 
+When sites are of several kinds whose differences should not count towards affinity (habitats,
+reserves, treatments), give the type of each site with `strata`. Co-occurrences are then counted
+within each type; the types share the coefficients and each has its own intercept and species
+effects.
+
+```julia
+site_type = rand(["intact", "invaded"], 30)
+chn = cooccurrence_regression(X, Y; strata=site_type)
+```
+
 Sampling uses NUTS from [Turing.jl](https://turinglang.org/), which this package re-exports,
 and the result is an [`MCMCChains.Chains`](https://turinglang.org/MCMCChains.jl/stable/) object,
 so the usual summaries and diagnostics apply:
@@ -113,7 +123,8 @@ end
 
 ## Examples
 
-`examples/beetles.jl` reproduces the dung beetle analyses from the paper.
+`examples/beetles.jl` reproduces the dung beetle analyses from the paper and
+`examples/ants_local.jl` the local-scale ant trait analysis.
 
 ## Citation
 

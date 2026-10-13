@@ -59,3 +59,20 @@ end
     @test Statistics.quantile(est, 0.005) < β < Statistics.quantile(est, 0.995)
     @test abs(Statistics.mean(est) - β) < 0.25
 end
+
+@testset "site types" begin
+    rng = Random.MersenneTwister(8)
+    S = 8
+    Y = rand(rng, 40, S) .< 0.5
+    Y[1:10, 2] .= false                       # a species missing from one site type
+    strata = repeat(["a", "b", "c", "d"], inner=10)
+    X = standardise(trait_distance(randn(rng, S)))
+    chn = cooccurrence_regression(X, Y, 60; strata)
+    pars = string.(names(chn, :parameters))
+    @test count(startswith("α["), pars) == 4
+    @test count(startswith("λ["), pars) == 4S
+    @test "β[1]" in pars
+    @test all(isfinite, chn[Symbol("β[1]")])
+    @test !any(startswith("λ"), string.(names(cooccurrence_regression([X], Y, 60; strata, drop_lambda=true), :parameters)))
+    @test_throws DimensionMismatch cooccurrence_regression(X, Y, 60; strata=strata[1:5])
+end

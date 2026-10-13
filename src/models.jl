@@ -70,6 +70,19 @@ end
     end
 end
 
+# Site types (strata): co-occurrences are counted within each type. The types share the
+# regression coefficients and each has its own intercept and species effects.
+@model function strata_regression(Xs,P,n_obs,n_X;priors =[4.0,1.0,1.0])
+    n_strata = length(P)
+    α ~ filldist(Normal(0.0,priors[1]),n_strata)
+    β ~ filldist(Normal(0.0,priors[2]),n_X)
+    λ ~ filldist(Normal(0.0,priors[3]),n_obs,n_strata)
+    for l in 1:n_strata
+        k,N,m = P[l]
+        Turing.@addlogprob!  sub_regression(Xs,k,n_obs,N,m,n_X,β,λ[:,l],α[l])
+    end
+end
+
 # Automatic differentiation backend
 
 # Provisional crossover; to be measured (see benchmarks). Forward mode costs grow with the
@@ -134,6 +147,14 @@ the order the explanatory variables were given) and `λ[i]` (in the order of the
 - `delta=0.65`: target acceptance rate.
 - `adtype`: automatic differentiation backend (an `ADTypes` type). By default chosen from
   the number of parameters, see [`default_adtype`](@ref).
+- `strata`: a vector giving the type of each site (row of `Y`), for data collected from
+  several kinds of site whose differences should not contribute to affinity. Prevalences
+  and co-occurrences are then counted within each site type `l`, with `N[l]` sites:
+
+      k[i, j, l] ~ LogOddsFNCH(m[i, l], m[j, l], N[l], α[l] + λ[i, l] + λ[j, l] + Σₚ β[p] * Xs[p][i, j])
+
+  The site types share the coefficients `β` and each has its own intercept `α[l]` and
+  species effects `λ[i, l]` (types in sorted order).
 - `drop_lambda=false`: if `true`, the species effects are left out of the returned chain.
 
 # Example
@@ -145,7 +166,22 @@ X = abs.(t .- t')                      # pairwise trait distance
 chn = cooccurrence_regression(X, Y)
 ```
 """
-function cooccurrence_regression(Xs::Vector,Y,n_iter::Real=1000;drop_lambda=false,alpha_sd =4.0,beta_sd = 1.0,lambda_sd =1.0,n_adapts=100,delta=0.65,adtype=nothing)
+function cooccurrence_regression(Xs::Vector,Y,n_iter::Real=1000;drop_lambda=false,alpha_sd =4.0,beta_sd = 1.0,lambda_sd =1.0,n_adapts=100,delta=0.65,adtype=nothing,strata=nothing)
+    if strata !== nothing
+        length(strata) == size(Y, 1) || throw(DimensionMismatch(
+            "strata has length $(length(strata)); expected one entry for each of the $(size(Y, 1)) sites (rows) of Y"))
+        n_obs = size(Y, 2)
+        n_X = length(Xs)
+        X_3D = _stack(Xs, n_obs)
+        P = map(unique(sort(strata))) do s
+            k, m, n_sample = cooccurrence_counts(Y[strata .== s, :])
+            (k, n_sample, m)
+        end
+        inference_model = strata_regression(X_3D, P, n_obs, n_X; priors =[alpha_sd,beta_sd,lambda_sd])
+        adtype = something(adtype, default_adtype(length(P) * (1 + n_obs) + n_X))
+        chn = Turing.sample(inference_model, NUTS(n_adapts,delta; adtype=adtype),n_iter)
+        return drop_lambda ? _drop_lambda(chn) : chn
+    end
     k, m, n_sample = cooccurrence_counts(Y)
     n_obs = length(m)
     n_X = length(Xs)
@@ -158,8 +194,8 @@ function cooccurrence_regression(Xs::Vector,Y,n_iter::Real=1000;drop_lambda=fals
     drop_lambda ? _drop_lambda(chn) : chn
 end
 
-function cooccurrence_regression(X,Y,n_iter::Real=1000;drop_lambda=false,alpha_sd =4.0,beta_sd = 1.0,lambda_sd =1.0,n_adapts=100,delta=0.65,adtype=nothing)
-    cooccurrence_regression([X],Y,n_iter;drop_lambda,alpha_sd,beta_sd,lambda_sd,n_adapts,delta,adtype)
+function cooccurrence_regression(X,Y,n_iter::Real=1000;kwargs...)
+    cooccurrence_regression([X],Y,n_iter;kwargs...)
 end
 
 """
