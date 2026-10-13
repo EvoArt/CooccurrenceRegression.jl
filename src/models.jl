@@ -41,7 +41,7 @@ function sub_regression(Xs,k,n_obs,N,m,n_X,β,λ,α)
 end
 
 
-@model function h_regression(P,N_obs,n_p,n_X;priors =[4.0,1.0,1.0,1.0,2.0,0.1])
+@model function h_regression(P,N_obs,n_p,n_X;priors =[4.0,1.0,1.0,2.0,0.1])
    
     # Priors
     α ~ Normal(0.0,priors[1])
@@ -54,6 +54,19 @@ end
         p=P[i]
         λinds = (λinds[end]+1):(λinds[end]+p[3])
         Turing.@addlogprob!  sub_regression(p...,n_X,(β[:,i] .* βσ) .+ βμ,λ[λinds],α)
+    end
+end
+
+# Pairs within groups, with regression coefficients shared by all groups.
+@model function within_regression(P,N_obs,n_X;priors =[4.0,1.0,1.0])
+    α ~ Normal(0.0,priors[1])
+    β ~ filldist(Normal(0.0,priors[2]),n_X)
+    λ ~ filldist(Normal(0.0,priors[3]),N_obs)
+    λinds = 0:0
+    for i in eachindex(P)
+        p=P[i]
+        λinds = (λinds[end]+1):(λinds[end]+p[3])
+        Turing.@addlogprob!  sub_regression(p...,n_X,β,λ[λinds],α)
     end
 end
 
@@ -73,71 +86,137 @@ more than a few dozen species use Mooncake.
 """
 default_adtype(n_params::Integer) =
     n_params <= FORWARD_MODE_MAX_PARAMS ? ADTypes.AutoForwardDiff() : ADTypes.AutoMooncake(config=nothing)
-
 # User facing methods
 
-# vector of X arrays
-function cooccurrence_regression(Xs::Vector,Y,n_iter::Real=1000;drop_lambda=false,alpha_sd =4.0,beta_sd = 1.0,lambda_sd =1.0,n_adapts=100,delta=0.65,adtype=nothing)
-    n_sample, n_obs = size(Y)
-    k = zeros(Int64, n_obs,n_obs)
-    for i in 2:n_obs
-        for j in 1:i-1
-            k[i,j] = sum(Y[:,i] .* Y[:,j])
-        end
+function _stack(Xs, S)
+    X_3D = Array{Float64}(undef, length(Xs), S, S)
+    for (p, X) in enumerate(Xs)
+        size(X) == (S, S) || throw(DimensionMismatch(
+            "explanatory variable $p has size $(size(X)); expected ($S, $S) to match the $S species (columns) of Y"))
+        X_3D[p, :, :] .= X
     end
-
-    n_X = length(Xs)
-    X_dims = size(Xs[1])
-    X_3D = Array{Float64}(undef,n_X,X_dims...)
-    for i in 1:n_X
-        X_3D[i,:,:] .= Xs[i]
-    end
-
-    params = X_3D,k, n_obs,n_sample, vec(Int.(sum(Y, dims = 1)))
-
-    inference_model = regression(params...;priors =[alpha_sd,beta_sd,lambda_sd])
-    adtype = something(adtype, default_adtype(1 + n_X + n_obs))
-    chn = Turing.sample(inference_model, NUTS(n_adapts,delta; adtype=adtype),n_iter)
-    
-    drop_lambda ? chn[["α",["β[$(i)]" for i in 1:n_X]...]] : chn
+    return X_3D
 end
 
-# single X array
+_drop_lambda(chn) = chn[[n for n in names(chn, :parameters) if !startswith(string(n), "λ")]]
+
+"""
+    cooccurrence_regression(X, Y, [n_iter=1000]; kwargs...)
+    cooccurrence_regression(Xs::Vector, Y, [n_iter=1000]; kwargs...)
+
+Bayesian dyadic regression of co-occurrence affinity on one or more pairwise explanatory
+variables.
+
+`Y` is an `N × S` presence/absence matrix with sites in rows and species in columns. `X` is an
+`S × S` matrix whose element `X[i, j]` relates species `i` to species `j` (for example a trait
+or phylogenetic distance); only the lower triangle is used. Several explanatory variables are
+passed as a vector of such matrices, `Xs`.
+
+For each pair of species `i > j`, with prevalences `m[i]`, `m[j]` and `k[i, j]` co-occurrences,
+
+    k[i, j] ~ LogOddsFNCH(m[i], m[j], N, α + λ[i] + λ[j] + Σₚ β[p] * Xs[p][i, j])
+    α    ~ Normal(0, alpha_sd)
+    β[p] ~ Normal(0, beta_sd)
+    λ[i] ~ Normal(0, lambda_sd)
+
+where `LogOddsFNCH` is Fisher's noncentral hypergeometric distribution parameterised by the
+log odds ratio (see [`LogOddsFNCH`](@ref)). The species effects `λ` account for the
+non-independence of pairs that share a species. Species present at none or at all of the
+sites carry no information and their pairs are left out of the likelihood.
+
+Sampling uses NUTS and returns an `MCMCChains.Chains` object with parameters `α`, `β[p]` (in
+the order the explanatory variables were given) and `λ[i]` (in the order of the columns of
+`Y`).
+
+# Keyword arguments
+- `alpha_sd=4.0`, `beta_sd=1.0`, `lambda_sd=1.0`: prior standard deviations.
+- `n_adapts=100`: number of adaptation steps.
+- `delta=0.65`: target acceptance rate.
+- `adtype`: automatic differentiation backend (an `ADTypes` type). By default chosen from
+  the number of parameters, see [`default_adtype`](@ref).
+- `drop_lambda=false`: if `true`, the species effects are left out of the returned chain.
+
+# Example
+```julia
+using CooccurrenceRegression
+Y = rand(Bool, 30, 12)                 # 30 sites, 12 species
+t = randn(12)                          # a trait
+X = abs.(t .- t')                      # pairwise trait distance
+chn = cooccurrence_regression(X, Y)
+```
+"""
+function cooccurrence_regression(Xs::Vector,Y,n_iter::Real=1000;drop_lambda=false,alpha_sd =4.0,beta_sd = 1.0,lambda_sd =1.0,n_adapts=100,delta=0.65,adtype=nothing)
+    k, m, n_sample = cooccurrence_counts(Y)
+    n_obs = length(m)
+    n_X = length(Xs)
+    X_3D = _stack(Xs, n_obs)
+
+    inference_model = regression(X_3D, k, n_obs, n_sample, m; priors =[alpha_sd,beta_sd,lambda_sd])
+    adtype = something(adtype, default_adtype(1 + n_X + n_obs))
+    chn = Turing.sample(inference_model, NUTS(n_adapts,delta; adtype=adtype),n_iter)
+
+    drop_lambda ? _drop_lambda(chn) : chn
+end
+
 function cooccurrence_regression(X,Y,n_iter::Real=1000;drop_lambda=false,alpha_sd =4.0,beta_sd = 1.0,lambda_sd =1.0,n_adapts=100,delta=0.65,adtype=nothing)
     cooccurrence_regression([X],Y,n_iter;drop_lambda,alpha_sd,beta_sd,lambda_sd,n_adapts,delta,adtype)
 end
 
+"""
+    cooccurrence_regression(X, Y, g::AbstractVector, [n_iter=1000]; kwargs...)
+    cooccurrence_regression(Xs::Vector, Y, g::AbstractVector, [n_iter=1000]; kwargs...)
 
+Hierarchical dyadic regression within groups. `g` assigns each species (column of `Y`) to a
+group, such as a genus or a functional guild. Only pairs of species from the same group enter
+the likelihood, and each group `q` has its own regression coefficients, drawn from a common
+distribution:
 
-function cooccurrence_regression(Xs::Vector,Y,g::Vector,n_iter::Real=1000;drop_lambda=false,alpha_sd =4.0,lambda_sd =1.0,
-                                mu_sd =1.0,sigma_params=(2.0,0.1),n_adapts=100,delta=0.65,adtype=nothing)
-    
+    k[i, j] ~ LogOddsFNCH(m[i], m[j], N, α + λ[i] + λ[j] + Σₚ b[p, q] * Xs[p][i, j])   for g[i] == g[j] == q
+    b[p, q] = βμ[p] + βσ[p] * β[p, q]
+    β[p, q] ~ Normal(0, 1)
+    βμ[p]   ~ Normal(0, mu_sd)
+    βσ[p]   ~ Gamma(sigma_params[1], sigma_params[2])     (shape, scale)
+    α       ~ Normal(0, alpha_sd)
+    λ[i]    ~ Normal(0, lambda_sd)
+
+The returned chain holds `α`, `βμ`, `βσ`, the standardised deviations `β[p, q]` (groups in
+sorted order) and `λ`. The coefficient of group `q` is `βμ[p] + βσ[p] * β[p, q]`; `βμ` is the
+average relationship across groups. The species effects `λ` are ordered by group and then by
+column of `Y`.
+
+With `pooled=true` the groups share a single set of coefficients `β[p] ~ Normal(0, beta_sd)`
+instead, so that the model is the non-hierarchical one restricted to pairs within groups.
+
+Keyword arguments are as for the non-hierarchical method, with `mu_sd=1.0` and
+`sigma_params=(2.0, 0.1)` in place of `beta_sd`.
+"""
+function cooccurrence_regression(Xs::Vector,Y,g::AbstractVector,n_iter::Real=1000;drop_lambda=false,alpha_sd =4.0,lambda_sd =1.0,
+                                mu_sd =1.0,sigma_params=(2.0,0.1),pooled=false,beta_sd=1.0,n_adapts=100,delta=0.65,adtype=nothing)
+    length(g) == size(Y, 2) || throw(DimensionMismatch(
+        "g has length $(length(g)); expected one entry for each of the $(size(Y, 2)) species (columns) of Y"))
     n_X = length(Xs)
-    X_dims = size(Xs[1])
-    X_3D = Array{Float64}(undef,n_X,X_dims...)
-    for i in 1:n_X
-        X_3D[i,:,:] .= Xs[i]
-    end
+    X_3D = _stack(Xs, size(Y, 2))
     P= []
     for group in unique(sort(g))
         inds = g .== group
-        y = Y[:,inds]
-        x_3d = X_3D[:,inds,inds]
-        n_sample, n_obs = size(y)
-        k = zeros(Int64, n_obs,n_obs)
-        for i in 2:n_obs
-            for j in 1:i-1
-                k[i,j] = sum(y[:,i] .* y[:,j])
-            end
-        end
-        params = x_3d,k, n_obs,n_sample, vec(Int.(sum(y, dims = 1)))
-        push!(P,params)
+        k, m, n_sample = cooccurrence_counts(Y[:,inds])
+        push!(P, (X_3D[:,inds,inds], k, length(m), n_sample, m))
     end
-    P = Tuple.(P)
+    P = identity.(P)
 
-    inference_model = h_regression(P,size(Y,2),length(P),n_X; priors =[alpha_sd,lambda_sd,mu_sd,sigma_params...])
-    adtype = something(adtype, default_adtype(1 + size(Y,2) + 2n_X + n_X*length(P)))
+    if pooled
+        inference_model = within_regression(P,size(Y,2),n_X; priors =[alpha_sd,beta_sd,lambda_sd])
+        n_params = 1 + size(Y,2) + n_X
+    else
+        inference_model = h_regression(P,size(Y,2),length(P),n_X; priors =[alpha_sd,lambda_sd,mu_sd,sigma_params...])
+        n_params = 1 + size(Y,2) + 2n_X + n_X*length(P)
+    end
+    adtype = something(adtype, default_adtype(n_params))
     chn = Turing.sample(inference_model, NUTS(n_adapts,delta; adtype=adtype),n_iter)
-    
-    drop_lambda ? chn[["α",["β[$(i)]" for i in 1:n_X]...]] : chn
+
+    drop_lambda ? _drop_lambda(chn) : chn
+end
+
+function cooccurrence_regression(X::AbstractMatrix,Y,g::AbstractVector,n_iter::Real=1000;kwargs...)
+    cooccurrence_regression([X],Y,g,n_iter;kwargs...)
 end

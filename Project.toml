@@ -1,6 +1,6 @@
 name = "CooccurrenceRegression"
 uuid = "b11753cd-0d5a-47ad-8b8f-99db3fa4a09b"
-authors = ["Arthur <arn203@exeter.ac.uk>"]
+authors = ["Arthur Newbury <a.r.newbury@exeter.ac.uk>"]
 version = "0.0.2"
 
 [deps]
@@ -11,6 +11,7 @@ ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 
 [compat]
@@ -19,7 +20,9 @@ ChainRulesCore = "1"
 Distributions = "0.25"
 ForwardDiff = "0.10, 1"
 Mooncake = "0.3 - 0.4"
+Random = "1"
 Reexport = "1.0 - 2.0"
+Statistics = "1"
 Turing = "0.30 - 0.50"
 julia = "1.10.4"
 

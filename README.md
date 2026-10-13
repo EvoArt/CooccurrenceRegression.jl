@@ -1,60 +1,120 @@
 # CooccurrenceRegression
 
-[![Build Status](https://github.com/evoart/CooccurrenceRegression.jl/actions/workflows/CI.yml/badge.svg?branch=master)](https://github.com/evoart/CooccurrenceRegression.jl/actions/workflows/CI.yml?query=branch%3Amaster)
+[![Build Status](https://github.com/EvoArt/CooccurrenceRegression.jl/actions/workflows/CI.yml/badge.svg?branch=master)](https://github.com/EvoArt/CooccurrenceRegression.jl/actions/workflows/CI.yml?query=branch%3Amaster)
 
+Bayesian estimation of co-occurrence *affinity*, and regression of affinity on properties of
+pairs of species such as trait or phylogenetic distance.
 
-[Bayesian estimation of co-occurrence affinity via dyadic regression](https://www.biorxiv.org/content/10.1101/2024.01.16.575941v1).
+Affinity is the log odds ratio of Fisher's noncentral hypergeometric distribution: a measure of
+how much more (or less) often two species are found together than expected from how common
+each is ([Mainali et al. 2022](https://doi.org/10.1126/sciadv.abj9204)). This package
 
-This package exports one main function `cooccurrence_regression` which performs Bayesian inference via Markov chain Monte Carlo (MCMC) to infer how co-occurrence relationships change in response to one or more explanatory variables, as detailed [here](https://www.biorxiv.org/content/10.1101/2024.01.16.575941v1). The basic inputs for a dataset with N sites and M species are one or many MxM arrays of explanatory variables and an NxM presence/absence matrix. **The presence/absence matrix must not contain any species that are present in either all or none of the sites**. Inference is performed using the [No U-turns (NUTS) sampler](https://jmlr.org/papers/volume15/hoffman14a/hoffman14a.pdf) implemented in [`Turing.jl`](https://turinglang.org/). The function returns a `Chains` struct. Currently, the package re-exports [`Turing.jl`](https://turinglang.org/), meaning that the user can easily process the [`Chains`](https://turinglang.org/MCMCChains.jl/stable/getting-started/) struct returned by the `cooccurrence_regression` function and use all posterior stats and diagnostics provided by [`MCMCChains.jl`](https://turinglang.org/MCMCChains.jl/stable/chains/).
+- estimates the affinity of pairs of species with a prior, giving finite estimates with
+  credible intervals for every pair (`affinity_posterior`, `pairwise_affinity`), alongside the
+  maximum likelihood estimate (`affinity_mle`);
+- fits regression models in which the co-occurrence counts themselves are the response and
+  the explanatory variables are pairwise quantities, with species effects to account for the
+  non-independence of pairs that share a species (`cooccurrence_regression`).
 
-```{julia}
-cooccurrence_regression(
-    X,                      MxM array of dyadic explanatory variables e.g. a distance matrix 
-    Y,                      NxM Presence absence matrix with rows of sites and columns of species
-    n_iter=1000;            Number of MCMC samples
-    drop_lambda=false,      Whether to drop the random intercept parameters from the returned chain
-    alpha_sd =4.0,          Standard deviation for the Gaussian prior for the global intercept
-    beta_sd = 1.0,          Standard deviation for the Gaussian prior for the regression coefficients
-    lambda_sd =1.0,         Standard deviation for the Gaussian prior for the random intercepts
-    n_adapts=100,           Number of adaptation samples for the NUTS inference algorithm
-    delta=0.65              Target acceptance rate for the NUTS inference algorithm
-)
+The methods are described in [Bayesian estimation of co-occurrence affinity with dyadic regression](https://www.biorxiv.org/content/10.1101/2024.01.16.575941v1).
 
-cooccurrence_regression(
-    Xs,                     Vector of MxM arrays of dyadic explanatory variables e.g. distance matrices 
-    "
-    "
-)
+## Installation
+
+```julia
+using Pkg
+Pkg.add(url="https://github.com/EvoArt/CooccurrenceRegression.jl")
 ```
 
-Alternatively, there is the hierarchical model structure:
+Julia 1.10 or later.
 
-```{julia}
-cooccurrence_regression(
-    X,                      MxM array of dyadic explanatory variables e.g. a distance matrix 
-    Y,                      NxM Presence absence matrix with rows of sites and columns of species
-    g,                      Vector of length M denoting the group for each species
-    n_iter=1000;            Number of MCMC samples
-    drop_lambda=false,      Whether to drop the random intercept parameters from the returned chain
-    alpha_sd =4.0,          Standard deviation for the Gaussian prior for the global intercept
-    lambda_sd =1.0,         Standard deviation for the Gaussian prior for the random intercepts
-    mu_sd =1.0,             Standard deviation for the Gaussian hyper prior for regression coefficients
-    sigma_params =(2.0,0.1),Parameters for the standard deviation of hyper prior for coefficients
-    n_adapts=100,           Number of adaptation samples for the NUTS inference algorithm
-    delta=0.65              Target acceptance rate for the NUTS inference algorithm
-)
+## Data
 
-cooccurrence_regression(
-    Xs,                     Vector of MxM arrays of dyadic explanatory variables e.g. distance matrices
-    Y,                      NxM Presence absence matrix with rows of sites and columns of species
-    g,                      Vector of length M denoting the group for each species 
-    "
-    "
-)
+All functions take an `N × S` presence/absence matrix `Y` with **sites in rows and species in
+columns**. Species found at none or at all of the sites carry no information about
+co-occurrence and are ignored.
+
+## Affinity of pairs of species
+
+```julia
+using CooccurrenceRegression
+
+Y = rand(Bool, 30, 12)                      # 30 sites, 12 species
+
+K, m, N = cooccurrence_counts(Y)            # co-occurrence counts, prevalences, number of sites
+
+affinity_mle(K[2, 1], m[2], m[1], N)        # maximum likelihood; ±Inf at the extremes
+affinity_map(K[2, 1], m[2], m[1], N)        # maximum a posteriori; always finite
+affinity_posterior(K[2, 1], m[2], m[1], N)  # (median, mean, lower, upper, pd)
+
+res = pairwise_affinity(Y)                  # S × S matrices: median, lower, upper, pd
 ```
 
-The returned `Chains` contains posterior samples for the intercept $\alpha$, regression coefficients for each explanatory variable in the order they are supplied $\beta$[i] and each species-level random intercept $\lambda$[i] in the order they appear in the presence absence matrix.
+`pd` is the probability of direction: the posterior probability that the affinity has the
+sign of its median. The posterior of a single affinity is one-dimensional and is integrated
+numerically, so these functions are fast and involve no sampling.
 
-### Future plans
+## Regression
 
-The current implementation depends on [`Turing.jl`](https://turinglang.org/) and [`Mooncake.jl`](https://chalk-lab.github.io/Mooncake.jl/stable/), which are heavy dependencies. I aim to streamline the package in the near future.
+```julia
+trait = randn(12)
+X = standardise(trait_distance(trait))      # S × S matrix of pairwise distances
+
+chn = cooccurrence_regression(X, Y)         # one explanatory variable
+chn = cooccurrence_regression([X1, X2], Y)  # several
+```
+
+The model for species `i` and `j` is
+
+```
+k[i, j] ~ FNCH(m[i], m[j], N, α + λ[i] + λ[j] + β[1] * X1[i, j] + β[2] * X2[i, j] + …)
+α ~ Normal(0, 4),   β[p] ~ Normal(0, 1),   λ[i] ~ Normal(0, 1)
+```
+
+and the prior standard deviations can be changed with the keywords `alpha_sd`, `beta_sd` and
+`lambda_sd`. The defaults assume standardised explanatory variables.
+
+To study relationships within groups (genera, guilds), pass a vector giving the group of
+each species. By default each group has its own coefficients, drawn from a common
+distribution; `pooled=true` fits a single set of coefficients to the within-group pairs.
+
+```julia
+g = rand(["a", "b", "c"], 12)
+chn = cooccurrence_regression(X, Y, g)
+chn = cooccurrence_regression(X, Y, g; pooled=true)
+```
+
+Sampling uses NUTS from [Turing.jl](https://turinglang.org/), which this package re-exports,
+and the result is an [`MCMCChains.Chains`](https://turinglang.org/MCMCChains.jl/stable/) object,
+so the usual summaries and diagnostics apply:
+
+```julia
+describe(chn)
+quantile(vec(chn[Symbol("β[1]")]), [0.025, 0.5, 0.975])
+```
+
+See the docstring of `cooccurrence_regression` for all options, including the choice of
+automatic differentiation backend (`adtype`).
+
+## The likelihood
+
+`fnch_logpdf(k, m_i, m_j, N, α)` is the log probability of `k` co-occurrences under Fisher's
+noncentral hypergeometric distribution, written in terms of the log odds ratio `α`. It is
+exact for extreme `α`, and its derivative with respect to `α` is available in closed form
+(observed minus expected co-occurrences), with rules for ForwardDiff, Mooncake and
+ChainRules. `LogOddsFNCH(m_i, m_j, N, α)` wraps it as a `Distributions.jl` distribution for
+use in your own Turing models:
+
+```julia
+@model function my_model(k, m_i, m_j, N)
+    α ~ Normal(0, 4)
+    k ~ LogOddsFNCH(m_i, m_j, N, α)
+end
+```
+
+## Examples
+
+`examples/beetles.jl` reproduces the dung beetle analyses from the paper.
+
+## Citation
+
+If you use this package please cite the paper above; see `CITATION.cff`.

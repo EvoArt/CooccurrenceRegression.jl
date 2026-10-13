@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the article below."
+title: "CooccurrenceRegression.jl"
+type: software
+authors:
+  - family-names: Newbury
+    given-names: Arthur
+    affiliation: "Centre for Ecology & Conservation, University of Exeter"
+repository-code: "https://github.com/EvoArt/CooccurrenceRegression.jl"
+license: MIT
+preferred-citation:
+  type: article
+  title: "Bayesian estimation of co-occurrence affinity with dyadic regression"
+  authors:
+    - family-names: Newbury
+      given-names: Arthur
+  journal: "bioRxiv"
+  year: 2024
+  doi: "10.1101/2024.01.16.575941"
