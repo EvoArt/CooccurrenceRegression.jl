@@ -15,7 +15,7 @@
                 for pred in 1:n_X
                     μ += β[pred]*Xs[pred,i,j] 
                 end
-                lp+=  FNCH_logpdf(mA,N-mA,mB,exp(μ),k[i,j])
+                lp += fnch_logpdf(k[i,j], mA, mB, N, μ)
             end
         end
     end
@@ -33,7 +33,7 @@ function sub_regression(Xs,k,n_obs,N,m,n_X,β,λ,α)
                 for pred in 1:n_X
                     μ += β[pred]*Xs[pred,i,j] 
                 end
-                lp+=  FNCH_logpdf(mA,N-mA,mB,exp(μ),k[i,j])
+                lp += fnch_logpdf(k[i,j], mA, mB, N, μ)
             end
         end
     end
@@ -57,10 +57,27 @@ end
     end
 end
 
+# Automatic differentiation backend
+
+# Provisional crossover; to be measured (see benchmarks). Forward mode costs grow with the
+# number of parameters, reverse mode (Mooncake) has a larger fixed overhead.
+const FORWARD_MODE_MAX_PARAMS = 50
+
+"""
+    default_adtype(n_params)
+
+AD backend used when `adtype` is not given: ForwardDiff for models with at most
+`FORWARD_MODE_MAX_PARAMS` parameters, Mooncake (reverse mode) otherwise. The dyadic model has
+one parameter per species plus the intercept and regression coefficients, so communities of
+more than a few dozen species use Mooncake.
+"""
+default_adtype(n_params::Integer) =
+    n_params <= FORWARD_MODE_MAX_PARAMS ? ADTypes.AutoForwardDiff() : ADTypes.AutoMooncake(config=nothing)
+
 # User facing methods
 
 # vector of X arrays
-function cooccurrence_regression(Xs::Vector,Y,n_iter::Real=1000;drop_lambda=false,alpha_sd =4.0,beta_sd = 1.0,lambda_sd =1.0,n_adapts=100,delta=0.65)
+function cooccurrence_regression(Xs::Vector,Y,n_iter::Real=1000;drop_lambda=false,alpha_sd =4.0,beta_sd = 1.0,lambda_sd =1.0,n_adapts=100,delta=0.65,adtype=nothing)
     n_sample, n_obs = size(Y)
     k = zeros(Int64, n_obs,n_obs)
     for i in 2:n_obs
@@ -76,23 +93,24 @@ function cooccurrence_regression(Xs::Vector,Y,n_iter::Real=1000;drop_lambda=fals
         X_3D[i,:,:] .= Xs[i]
     end
 
-    params = X_3D,k, n_obs,n_sample, vec(sum(Y, dims = 1))
+    params = X_3D,k, n_obs,n_sample, vec(Int.(sum(Y, dims = 1)))
 
     inference_model = regression(params...;priors =[alpha_sd,beta_sd,lambda_sd])
-    chn = Turing.sample(inference_model, NUTS(n_adapts,delta; adtype=ADTypes.AutoMooncake(config=nothing)),n_iter)
+    adtype = something(adtype, default_adtype(1 + n_X + n_obs))
+    chn = Turing.sample(inference_model, NUTS(n_adapts,delta; adtype=adtype),n_iter)
     
     drop_lambda ? chn[["α",["β[$(i)]" for i in 1:n_X]...]] : chn
 end
 
 # single X array
-function cooccurrence_regression(X,Y,n_iter::Real=1000;drop_lambda=false,alpha_sd =4.0,beta_sd = 1.0,lambda_sd =1.0,n_adapts=100,delta=0.65) 
-    cooccurrence_regression([X],Y,n_iter;drop_lambda,alpha_sd,beta_sd,lambda_sd,n_adapts,delta)
+function cooccurrence_regression(X,Y,n_iter::Real=1000;drop_lambda=false,alpha_sd =4.0,beta_sd = 1.0,lambda_sd =1.0,n_adapts=100,delta=0.65,adtype=nothing)
+    cooccurrence_regression([X],Y,n_iter;drop_lambda,alpha_sd,beta_sd,lambda_sd,n_adapts,delta,adtype)
 end
 
 
 
 function cooccurrence_regression(Xs::Vector,Y,g::Vector,n_iter::Real=1000;drop_lambda=false,alpha_sd =4.0,lambda_sd =1.0,
-                                mu_sd =1.0,sigma_params=(2.0,0.1),n_adapts=100,delta=0.65)
+                                mu_sd =1.0,sigma_params=(2.0,0.1),n_adapts=100,delta=0.65,adtype=nothing)
     
     n_X = length(Xs)
     X_dims = size(Xs[1])
@@ -112,13 +130,14 @@ function cooccurrence_regression(Xs::Vector,Y,g::Vector,n_iter::Real=1000;drop_l
                 k[i,j] = sum(y[:,i] .* y[:,j])
             end
         end
-        params = x_3d,k, n_obs,n_sample, vec(sum(y, dims = 1))
+        params = x_3d,k, n_obs,n_sample, vec(Int.(sum(y, dims = 1)))
         push!(P,params)
     end
     P = Tuple.(P)
 
     inference_model = h_regression(P,size(Y,2),length(P),n_X; priors =[alpha_sd,lambda_sd,mu_sd,sigma_params...])
-    chn = Turing.sample(inference_model, NUTS(n_adapts,delta; adtype=ADTypes.AutoMooncake(config=nothing)),n_iter)
+    adtype = something(adtype, default_adtype(1 + size(Y,2) + 2n_X + n_X*length(P)))
+    chn = Turing.sample(inference_model, NUTS(n_adapts,delta; adtype=adtype),n_iter)
     
     drop_lambda ? chn[["α",["β[$(i)]" for i in 1:n_X]...]] : chn
 end
