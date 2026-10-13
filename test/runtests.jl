@@ -1,5 +1,9 @@
 using CooccurrenceRegression, Random
 using Test
+import ADTypes, ChainRulesCore, DifferentiationInterface, ForwardDiff, Mooncake
+
+include("fnch.jl")
+
 X = 1 .- rand(LKJ(50,1))
 Y = rand(Bool,3,50)
 @testset "CooccurrenceRegression.jl" begin
