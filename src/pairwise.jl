@@ -2,7 +2,7 @@
 # posterior summaries. Depends only on Base and fnch.jl.
 
 """
-    cooccurrence_counts(Y) -> (K, m, N)
+    cooccurrence_counts(Y; occupied_only=false) -> (K, m, N)
 
 Summarise an `N × S` presence/absence matrix `Y` (rows are sites, columns are species; any
 value greater than zero counts as a presence).
@@ -10,10 +10,16 @@ value greater than zero counts as a presence).
 Returns the `S × S` matrix `K` of co-occurrence counts (`K[i, j]` is the number of sites at
 which species `i` and `j` were both present), the vector `m` of prevalences (the number of
 sites at which each species was present) and the number of sites `N`.
+
+With `occupied_only=true`, sites at which none of the species was present are left out, so
+that `N` is the number of sites occupied by at least one of them.
 """
-function cooccurrence_counts(Y::AbstractMatrix)
-    N = size(Y, 1)
+function cooccurrence_counts(Y::AbstractMatrix; occupied_only::Bool=false)
     P = Int.(Y .> 0)
+    if occupied_only
+        P = P[vec(any(P .> 0, dims=2)), :]
+    end
+    N = size(P, 1)
     K = transpose(P) * P
     m = vec(sum(P, dims=1))
     return K, m, N

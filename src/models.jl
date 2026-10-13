@@ -223,11 +223,18 @@ column of `Y`.
 With `pooled=true` the groups share a single set of coefficients `β[p] ~ Normal(0, beta_sd)`
 instead, so that the model is the non-hierarchical one restricted to pairs within groups.
 
+By default the prevalence of a species and the number of sites `N` refer to all sites, so
+the model asks whether two species are found together more often than expected if each could
+occur anywhere. With `group_range=true` the sites considered for a group are those at which
+at least one of its species is present, so that co-occurrence is judged within the range of
+the group. Use this when groups occupy different regions and absence from places a group
+has never reached should not count as evidence.
+
 Keyword arguments are as for the non-hierarchical method, with `mu_sd=1.0` and
 `sigma_params=(2.0, 0.1)` in place of `beta_sd`.
 """
 function cooccurrence_regression(Xs::Vector,Y,g::AbstractVector,n_iter::Real=1000;drop_lambda=false,alpha_sd =4.0,lambda_sd =1.0,
-                                mu_sd =1.0,sigma_params=(2.0,0.1),pooled=false,beta_sd=1.0,n_adapts=100,delta=0.65,adtype=nothing)
+                                mu_sd =1.0,sigma_params=(2.0,0.1),pooled=false,beta_sd=1.0,group_range=false,n_adapts=100,delta=0.65,adtype=nothing)
     length(g) == size(Y, 2) || throw(DimensionMismatch(
         "g has length $(length(g)); expected one entry for each of the $(size(Y, 2)) species (columns) of Y"))
     n_X = length(Xs)
@@ -235,7 +242,7 @@ function cooccurrence_regression(Xs::Vector,Y,g::AbstractVector,n_iter::Real=100
     P= []
     for group in unique(sort(g))
         inds = g .== group
-        k, m, n_sample = cooccurrence_counts(Y[:,inds])
+        k, m, n_sample = cooccurrence_counts(Y[:,inds]; occupied_only=group_range)
         push!(P, (X_3D[:,inds,inds], k, length(m), n_sample, m))
     end
     P = identity.(P)

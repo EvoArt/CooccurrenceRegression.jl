@@ -96,3 +96,14 @@ end
     @test all(iszero, Z[9, :])               # a group of one has no pairs
     @test_throws DimensionMismatch standardise(X, g[1:3])
 end
+
+@testset "counts within the occupied sites" begin
+    Y = Bool[1 0 0; 1 1 0; 0 0 0; 0 1 0; 0 0 0; 0 0 1]
+    K, m, N = cooccurrence_counts(Y[:, 1:2])
+    Ko, mo, No = cooccurrence_counts(Y[:, 1:2]; occupied_only=true)
+    @test N == 6 && No == 3
+    @test K == Ko && m == mo
+    @test cooccurrence_counts(Y; occupied_only=true)[3] == 4
+    # the same overlap is weaker evidence of association within a smaller range
+    @test affinity_map(K[2, 1], m[2], m[1], No) < affinity_map(K[2, 1], m[2], m[1], N)
+end

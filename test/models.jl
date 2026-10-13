@@ -76,3 +76,17 @@ end
     @test !any(startswith("λ"), string.(names(cooccurrence_regression([X], Y, 60; strata, drop_lambda=true), :parameters)))
     @test_throws DimensionMismatch cooccurrence_regression(X, Y, 60; strata=strata[1:5])
 end
+
+@testset "group range" begin
+    rng = Random.MersenneTwister(9)
+    Y = falses(40, 10)
+    Y[1:20, 1:5] .= rand(rng, 20, 5) .< 0.5        # one group in the first 20 sites
+    Y[21:40, 6:10] .= rand(rng, 20, 5) .< 0.5      # the other in the last 20
+    g = repeat([1, 2], inner=5)
+    X = standardise(trait_distance(randn(rng, 10)), g)
+    Random.seed!(1); a = cooccurrence_regression(X, Y, g, 60; pooled=true)
+    Random.seed!(1); b = cooccurrence_regression(X, Y, g, 60; pooled=true, group_range=true)
+    @test all(isfinite, b[Symbol("β[1]")])
+    # sharing a region no longer counts as association
+    @test Statistics.mean(b[:α]) < Statistics.mean(a[:α])
+end
