@@ -27,8 +27,8 @@ gower_chn = cooccurrence_regression(standardise(gower_distance(guild, biomass)),
 X1 = standardise(biomass_dist)
 interaction_chn = cooccurrence_regression([X1, guild_dist, X1 .* guild_dist], Y; drop_lambda=true)
 
-# 3. Biomass distance among species of the same guild
-within_chn = cooccurrence_regression(X1, Y, guild; pooled=true, drop_lambda=true)
+# 3. Biomass distance among species of the same guild, standardised within guild
+within_chn = cooccurrence_regression(standardise(biomass_dist, guild), Y, guild; pooled=true, drop_lambda=true)
 
 for (name, chn) in ("Gower" => gower_chn, "Interaction" => interaction_chn, "Within guild" => within_chn)
     println("\n", name)

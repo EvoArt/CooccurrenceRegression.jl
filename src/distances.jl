@@ -60,3 +60,24 @@ function standardise(X::AbstractMatrix)
     end
     return Z
 end
+
+"""
+    standardise(X, g)
+
+Standardise within groups: for each group in `g` (one entry per species), the off-diagonal
+elements of `X` between species of that group are centred and scaled to mean 0 and standard
+deviation 1. Elements between species of different groups, which are not used by the
+within-group models of [`cooccurrence_regression`](@ref), are set to 0.
+"""
+function standardise(X::AbstractMatrix, g::AbstractVector)
+    S = size(X, 1)
+    size(X, 2) == S || throw(DimensionMismatch("X must be square"))
+    length(g) == S || throw(DimensionMismatch("g must have one entry per species"))
+    Z = zeros(S, S)
+    for group in unique(g)
+        inds = findall(==(group), g)
+        length(inds) > 1 || continue
+        Z[inds, inds] .= standardise(X[inds, inds])
+    end
+    return Z
+end

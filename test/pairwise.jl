@@ -84,3 +84,15 @@ end
     @test all(Z[i, i] == 0 for i in 1:3)
     @test_throws ArgumentError standardise(zeros(3, 3))
 end
+
+@testset "standardising within groups" begin
+    rng = Random.MersenneTwister(5)
+    X = trait_distance(randn(rng, 9))
+    g = [1, 1, 1, 1, 2, 2, 2, 2, 3]
+    Z = standardise(X, g)
+    @test Z[1:4, 1:4] ≈ standardise(X[1:4, 1:4])
+    @test Z[5:8, 5:8] ≈ standardise(X[5:8, 5:8])
+    @test all(iszero, Z[1:4, 5:9])
+    @test all(iszero, Z[9, :])               # a group of one has no pairs
+    @test_throws DimensionMismatch standardise(X, g[1:3])
+end
