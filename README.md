@@ -73,6 +73,10 @@ k[i, j] ~ FNCH(m[i], m[j], N, α + λ[i] + λ[j] + β[1] * X1[i, j] + β[2] * X2
 and the prior standard deviations can be changed with the keywords `alpha_sd`, `beta_sd` and
 `lambda_sd`. The defaults assume standardised explanatory variables.
 
+Affinity is the default measure. With `metric=:jaccard` the linear predictor is instead the
+logit of the Jaccard index, with a binomial likelihood for the co-occurrences among the sites
+holding either species; unlike affinity, the Jaccard index depends on how common the species are.
+
 To study relationships within groups (genera, guilds), pass a vector giving the group of
 each species. By default each group has its own coefficients, drawn from a common
 distribution; `pooled=true` fits a single set of coefficients to the within-group pairs.

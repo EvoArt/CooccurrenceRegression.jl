@@ -1,5 +1,5 @@
 # Affinity of a single pair of species: maximum likelihood, maximum a posteriori and full
-# posterior summaries. Depends only on Base, fnch.jl and site_weights.jl.
+# posterior summaries. Depends only on Base, fnch.jl, site_weights.jl and jaccard.jl.
 
 """
     cooccurrence_counts(Y; occupied_only=false) -> (K, m, N)
@@ -169,7 +169,7 @@ function _interpolate(xs, ys, x)
 end
 
 """
-    pairwise_affinity(Y; prior_sd=4.0, level=0.95, site_weights=false)
+    pairwise_affinity(Y; prior_sd=4.0, level=0.95, site_weights=false, metric=:affinity)
 
 Posterior summaries of the affinity of every pair of species in the `N × S` presence/absence
 matrix `Y` (rows are sites, columns are species), each pair analysed on its own with the
@@ -180,6 +180,10 @@ for each pair with that pair left out (see [`site_weighted_pairs`](@ref)), so th
 in richness between sites do not appear as associations. Known site effects can be given
 instead as a vector, `site_weights = b`, one per row of `Y`.
 
+With `metric=:jaccard` the summaries are of `logit(J)` instead, where `J` is the Jaccard index
+of the pair, under the binomial model of [`jaccard_logpdf`](@ref) and the prior
+`logit(J) ~ Normal(0, prior_sd)`. Not available with site weights.
+
 Returns a named tuple of symmetric `S × S` matrices: `median`, `lower`, `upper` (credible
 interval of probability `level`), `pd` (probability of direction) and `p_positive`
 (probability that the affinity is positive). Entries are `NaN` on
@@ -187,7 +191,12 @@ the diagonal and for species present at none or all of the sites.
 
 See [`affinity_posterior`](@ref) for a single pair.
 """
-function pairwise_affinity(Y::AbstractMatrix; prior_sd::Real=4.0, level::Real=0.95, site_weights=false)
+function pairwise_affinity(Y::AbstractMatrix; prior_sd::Real=4.0, level::Real=0.95, site_weights=false,
+                           metric::Symbol=:affinity)
+    metric in (:affinity, :jaccard) || throw(ArgumentError("metric must be :affinity or :jaccard, got $(repr(metric))"))
+    metric === :jaccard && site_weights !== false &&
+        throw(ArgumentError("site_weights is only available with metric = :affinity"))
+    prior_sd > 0 || throw(ArgumentError("prior_sd must be positive"))
     S = size(Y, 2)
     med, lower, upper, pd, ppos = (fill(NaN, S, S) for _ in 1:5)
     function store!(i, j, post)
@@ -201,10 +210,14 @@ function pairwise_affinity(Y::AbstractMatrix; prior_sd::Real=4.0, level::Real=0.
         K, m, N = cooccurrence_counts(Y)
         for j in 1:S-1, i in j+1:S
             (0 < m[i] < N && 0 < m[j] < N) || continue
-            store!(i, j, affinity_posterior(K[i, j], m[i], m[j], N; prior_sd, level))
+            if metric === :affinity
+                store!(i, j, affinity_posterior(K[i, j], m[i], m[j], N; prior_sd, level))
+            else
+                lpg = η -> jaccard_logpdf_and_gradient(K[i, j], m[i], m[j], N, η)
+                store!(i, j, _posterior_summary(lpg, prior_sd, level, 1001))
+            end
         end
     else
-        prior_sd > 0 || throw(ArgumentError("prior_sd must be positive"))
         b = site_weights === true ? nothing : site_weights
         for p in site_weighted_pairs(Y; b)
             store!(p.i, p.j, _posterior_summary(α -> _weighted_logpdf_and_gradient(p, α), prior_sd, level, 1001))

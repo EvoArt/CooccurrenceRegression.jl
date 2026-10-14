@@ -1,5 +1,5 @@
 
-@model function regression(Xs,k, n_obs,N,m, n_X = size(Xs,1);priors =[4.0,1.0,1.0])
+@model function regression(Xs,k, n_obs,N,m, n_X = size(Xs,1);priors =[4.0,1.0,1.0],lik=fnch_logpdf)
    
     # Priors
     α ~ Normal(0.0,priors[1])
@@ -15,14 +15,14 @@
                 for pred in 1:n_X
                     μ += β[pred]*Xs[pred,i,j] 
                 end
-                lp += fnch_logpdf(k[i,j], mA, mB, N, μ)
+                lp += lik(k[i,j], mA, mB, N, μ)
             end
         end
     end
     Turing.@addlogprob! lp
 end
 
-function sub_regression(Xs,k,n_obs,N,m,n_X,β,λ,α)
+function sub_regression(Xs,k,n_obs,N,m,n_X,β,λ,α,lik=fnch_logpdf)
     lp = 0.0
     for j in 1:n_obs-1
         mB = m[j]
@@ -33,7 +33,7 @@ function sub_regression(Xs,k,n_obs,N,m,n_X,β,λ,α)
                 for pred in 1:n_X
                     μ += β[pred]*Xs[pred,i,j] 
                 end
-                lp += fnch_logpdf(k[i,j], mA, mB, N, μ)
+                lp += lik(k[i,j], mA, mB, N, μ)
             end
         end
     end
@@ -41,7 +41,7 @@ function sub_regression(Xs,k,n_obs,N,m,n_X,β,λ,α)
 end
 
 
-@model function h_regression(P,N_obs,n_p,n_X;priors =[4.0,1.0,1.0,2.0,0.1])
+@model function h_regression(P,N_obs,n_p,n_X;priors =[4.0,1.0,1.0,2.0,0.1],lik=fnch_logpdf)
    
     # Priors
     α ~ Normal(0.0,priors[1])
@@ -53,12 +53,12 @@ end
     for i in eachindex(P)
         p=P[i]
         λinds = (λinds[end]+1):(λinds[end]+p[3])
-        Turing.@addlogprob!  sub_regression(p...,n_X,(β[:,i] .* βσ) .+ βμ,λ[λinds],α)
+        Turing.@addlogprob!  sub_regression(p...,n_X,(β[:,i] .* βσ) .+ βμ,λ[λinds],α,lik)
     end
 end
 
 # Pairs within groups, with regression coefficients shared by all groups.
-@model function within_regression(P,N_obs,n_X;priors =[4.0,1.0,1.0])
+@model function within_regression(P,N_obs,n_X;priors =[4.0,1.0,1.0],lik=fnch_logpdf)
     α ~ Normal(0.0,priors[1])
     β ~ filldist(Normal(0.0,priors[2]),n_X)
     λ ~ filldist(Normal(0.0,priors[3]),N_obs)
@@ -66,20 +66,20 @@ end
     for i in eachindex(P)
         p=P[i]
         λinds = (λinds[end]+1):(λinds[end]+p[3])
-        Turing.@addlogprob!  sub_regression(p...,n_X,β,λ[λinds],α)
+        Turing.@addlogprob!  sub_regression(p...,n_X,β,λ[λinds],α,lik)
     end
 end
 
 # Site types (strata): co-occurrences are counted within each type. The types share the
 # regression coefficients and each has its own intercept and species effects.
-@model function strata_regression(Xs,P,n_obs,n_X;priors =[4.0,1.0,1.0])
+@model function strata_regression(Xs,P,n_obs,n_X;priors =[4.0,1.0,1.0],lik=fnch_logpdf)
     n_strata = length(P)
     α ~ filldist(Normal(0.0,priors[1]),n_strata)
     β ~ filldist(Normal(0.0,priors[2]),n_X)
     λ ~ filldist(Normal(0.0,priors[3]),n_obs,n_strata)
     for l in 1:n_strata
         k,N,m = P[l]
-        Turing.@addlogprob!  sub_regression(Xs,k,n_obs,N,m,n_X,β,λ[:,l],α[l])
+        Turing.@addlogprob!  sub_regression(Xs,k,n_obs,N,m,n_X,β,λ[:,l],α[l],lik)
     end
 end
 
@@ -129,6 +129,12 @@ end
 
 _drop_lambda(chn) = chn[[n for n in names(chn, :parameters) if !startswith(string(n), "λ")]]
 
+function _likelihood(metric)
+    metric === :affinity && return fnch_logpdf
+    metric === :jaccard && return jaccard_logpdf
+    throw(ArgumentError("metric must be :affinity or :jaccard, got $(repr(metric))"))
+end
+
 """
     cooccurrence_regression(X, Y, [n_iter=1000]; kwargs...)
     cooccurrence_regression(Xs::Vector, Y, [n_iter=1000]; kwargs...)
@@ -171,6 +177,11 @@ the order the explanatory variables were given) and `λ[i]` (in the order of the
 
   The site types share the coefficients `β` and each has its own intercept `α[l]` and
   species effects `λ[i, l]` (types in sorted order).
+- `metric=:affinity`: the measure of co-occurrence being modelled. With `metric=:jaccard` the
+  linear predictor is `logit(J[i, j])`, where `J` is the Jaccard index (the probability that
+  both species occur at a site where at least one does), and the likelihood is
+  `k[i, j] ~ Binomial(m[i] + m[j] - k[i, j], J[i, j])` (see [`jaccard_logpdf`](@ref)). Unlike
+  affinity, `J` depends on how common the two species are.
 - `site_weights=false`: if `true`, sites are not treated as equally available. The likelihood
   is the site-weighted one, with site effects from a logistic model with species and site
   effects, re-estimated for each pair with that pair left out (see
@@ -188,8 +199,10 @@ X = abs.(t .- t')                      # pairwise trait distance
 chn = cooccurrence_regression(X, Y)
 ```
 """
-function cooccurrence_regression(Xs::Vector,Y,n_iter::Real=1000;drop_lambda=false,alpha_sd =4.0,beta_sd = 1.0,lambda_sd =1.0,n_adapts=100,delta=0.65,adtype=nothing,strata=nothing,site_weights=false)
+function cooccurrence_regression(Xs::Vector,Y,n_iter::Real=1000;drop_lambda=false,alpha_sd =4.0,beta_sd = 1.0,lambda_sd =1.0,n_adapts=100,delta=0.65,adtype=nothing,strata=nothing,site_weights=false,metric=:affinity)
+    lik = _likelihood(metric)
     if site_weights !== false
+        metric === :affinity || throw(ArgumentError("site_weights is only available with metric = :affinity"))
         strata === nothing || throw(ArgumentError("site_weights and strata cannot be combined"))
         n_obs = size(Y, 2)
         n_X = length(Xs)
@@ -210,7 +223,7 @@ function cooccurrence_regression(Xs::Vector,Y,n_iter::Real=1000;drop_lambda=fals
             k, m, n_sample = cooccurrence_counts(Y[strata .== s, :])
             (k, n_sample, m)
         end
-        inference_model = strata_regression(X_3D, P, n_obs, n_X; priors =[alpha_sd,beta_sd,lambda_sd])
+        inference_model = strata_regression(X_3D, P, n_obs, n_X; priors =[alpha_sd,beta_sd,lambda_sd], lik)
         adtype = something(adtype, default_adtype(length(P) * (1 + n_obs) + n_X))
         chn = Turing.sample(inference_model, NUTS(n_adapts,delta; adtype=adtype),n_iter)
         return drop_lambda ? _drop_lambda(chn) : chn
@@ -220,7 +233,7 @@ function cooccurrence_regression(Xs::Vector,Y,n_iter::Real=1000;drop_lambda=fals
     n_X = length(Xs)
     X_3D = _stack(Xs, n_obs)
 
-    inference_model = regression(X_3D, k, n_obs, n_sample, m; priors =[alpha_sd,beta_sd,lambda_sd])
+    inference_model = regression(X_3D, k, n_obs, n_sample, m; priors =[alpha_sd,beta_sd,lambda_sd], lik)
     adtype = something(adtype, default_adtype(1 + n_X + n_obs))
     chn = Turing.sample(inference_model, NUTS(n_adapts,delta; adtype=adtype),n_iter)
 
@@ -263,11 +276,12 @@ at least one of its species is present, so that co-occurrence is judged within t
 the group. Use this when groups occupy different regions and absence from places a group
 has never reached should not count as evidence.
 
-Keyword arguments are as for the non-hierarchical method, with `mu_sd=1.0` and
-`sigma_params=(2.0, 0.1)` in place of `beta_sd`.
+Keyword arguments are as for the non-hierarchical method (including `metric`), with
+`mu_sd=1.0` and `sigma_params=(2.0, 0.1)` in place of `beta_sd`.
 """
 function cooccurrence_regression(Xs::Vector,Y,g::AbstractVector,n_iter::Real=1000;drop_lambda=false,alpha_sd =4.0,lambda_sd =1.0,
-                                mu_sd =1.0,sigma_params=(2.0,0.1),pooled=false,beta_sd=1.0,group_range=false,n_adapts=100,delta=0.65,adtype=nothing)
+                                mu_sd =1.0,sigma_params=(2.0,0.1),pooled=false,beta_sd=1.0,group_range=false,n_adapts=100,delta=0.65,adtype=nothing,metric=:affinity)
+    lik = _likelihood(metric)
     length(g) == size(Y, 2) || throw(DimensionMismatch(
         "g has length $(length(g)); expected one entry for each of the $(size(Y, 2)) species (columns) of Y"))
     n_X = length(Xs)
@@ -281,10 +295,10 @@ function cooccurrence_regression(Xs::Vector,Y,g::AbstractVector,n_iter::Real=100
     P = identity.(P)
 
     if pooled
-        inference_model = within_regression(P,size(Y,2),n_X; priors =[alpha_sd,beta_sd,lambda_sd])
+        inference_model = within_regression(P,size(Y,2),n_X; priors =[alpha_sd,beta_sd,lambda_sd], lik)
         n_params = 1 + size(Y,2) + n_X
     else
-        inference_model = h_regression(P,size(Y,2),length(P),n_X; priors =[alpha_sd,lambda_sd,mu_sd,sigma_params...])
+        inference_model = h_regression(P,size(Y,2),length(P),n_X; priors =[alpha_sd,lambda_sd,mu_sd,sigma_params...], lik)
         n_params = 1 + size(Y,2) + 2n_X + n_X*length(P)
     end
     adtype = something(adtype, default_adtype(n_params))

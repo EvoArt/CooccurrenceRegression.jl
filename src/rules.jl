@@ -57,3 +57,32 @@ function weighted_logpdf(k::Integer, lo::Integer, logc::AbstractVector{<:Real}, 
     lp, g = weighted_logpdf_and_gradient(k, lo, logc, ForwardDiff.value(α))
     return ForwardDiff.Dual{Tg}(lp, g * ForwardDiff.partials(α))
 end
+
+# The same for the binomial (Jaccard) likelihood, d/dη = k - u J.
+
+function ChainRulesCore.frule(
+    (_, _, _, _, _, Δη), ::typeof(jaccard_logpdf), k::Integer, mi::Integer, mj::Integer, N::Integer, η::Real
+)
+    lp, g = jaccard_logpdf_and_gradient(k, mi, mj, N, η)
+    return lp, g * Δη
+end
+
+function ChainRulesCore.rrule(
+    ::typeof(jaccard_logpdf), k::Integer, mi::Integer, mj::Integer, N::Integer, η::Real
+)
+    lp, g = jaccard_logpdf_and_gradient(k, mi, mj, N, η)
+    function jaccard_logpdf_pullback(Δ)
+        nt = ChainRulesCore.NoTangent()
+        return nt, nt, nt, nt, nt, g * ChainRulesCore.unthunk(Δ)
+    end
+    return lp, jaccard_logpdf_pullback
+end
+
+Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(jaccard_logpdf),Int,Int,Int,Int,Float64}
+
+function jaccard_logpdf(
+    k::Integer, mi::Integer, mj::Integer, N::Integer, η::ForwardDiff.Dual{Tg}
+) where {Tg}
+    lp, g = jaccard_logpdf_and_gradient(k, mi, mj, N, ForwardDiff.value(η))
+    return ForwardDiff.Dual{Tg}(lp, g * ForwardDiff.partials(η))
+end
