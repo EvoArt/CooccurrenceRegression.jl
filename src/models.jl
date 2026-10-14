@@ -101,9 +101,9 @@ end
 
 # Automatic differentiation backend
 
-# Provisional crossover; to be measured (see benchmarks). Forward mode costs grow with the
-# number of parameters, reverse mode (Mooncake) has a larger fixed overhead.
-const FORWARD_MODE_MAX_PARAMS = 50
+# Measured on Athena (athena/bench_gradient.jl): ForwardDiff and Mooncake are level at about 12
+# parameters, Mooncake is twice as fast at 25 and ten times at 150.
+const FORWARD_MODE_MAX_PARAMS = 20
 
 """
     default_adtype(n_params)
