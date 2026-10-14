@@ -115,7 +115,8 @@ and co-occur at `k` of them, under the prior `α ~ Normal(0, prior_sd)`.
 
 Returns a named tuple with the posterior `median` and `mean`, the limits `lower` and `upper`
 of the central credible interval of probability `level`, and `pd`, the probability of
-direction: the posterior probability that `α` has the same sign as its median.
+direction: the posterior probability that `α` has the same sign as its median; and `p_positive`,
+the posterior probability that `α > 0`.
 
 The posterior is one-dimensional and is integrated numerically on a grid of `npoints` values,
 so no sampling is involved and the result is deterministic.
@@ -147,7 +148,7 @@ function affinity_posterior(k::Integer, mi::Integer, mj::Integer, N::Integer;
     quant(p) = _interpolate(cdf, grid, p)
     below0 = left >= 0 ? 0.0 : right <= 0 ? 1.0 : _interpolate(grid, cdf, 0.0)
     return (median=quant(0.5), mean=avg, lower=quant((1 - level) / 2), upper=quant((1 + level) / 2),
-            pd=max(below0, 1 - below0))
+            pd=max(below0, 1 - below0), p_positive=1 - below0)
 end
 
 # Linear interpolation of y at x, for increasing xs.
@@ -168,7 +169,8 @@ matrix `Y` (rows are sites, columns are species), each pair analysed on its own 
 prior `α ~ Normal(0, prior_sd)`.
 
 Returns a named tuple of symmetric `S × S` matrices: `median`, `lower`, `upper` (credible
-interval of probability `level`) and `pd` (probability of direction). Entries are `NaN` on
+interval of probability `level`), `pd` (probability of direction) and `p_positive`
+(probability that the affinity is positive). Entries are `NaN` on
 the diagonal and for species present at none or all of the sites.
 
 See [`affinity_posterior`](@ref) for a single pair.
@@ -176,7 +178,7 @@ See [`affinity_posterior`](@ref) for a single pair.
 function pairwise_affinity(Y::AbstractMatrix; prior_sd::Real=4.0, level::Real=0.95)
     K, m, N = cooccurrence_counts(Y)
     S = length(m)
-    med, lower, upper, pd = (fill(NaN, S, S) for _ in 1:4)
+    med, lower, upper, pd, ppos = (fill(NaN, S, S) for _ in 1:5)
     for j in 1:S-1, i in j+1:S
         (0 < m[i] < N && 0 < m[j] < N) || continue
         post = affinity_posterior(K[i, j], m[i], m[j], N; prior_sd, level)
@@ -184,6 +186,7 @@ function pairwise_affinity(Y::AbstractMatrix; prior_sd::Real=4.0, level::Real=0.
         lower[i, j] = lower[j, i] = post.lower
         upper[i, j] = upper[j, i] = post.upper
         pd[i, j] = pd[j, i] = post.pd
+        ppos[i, j] = ppos[j, i] = post.p_positive
     end
-    return (median=med, lower=lower, upper=upper, pd=pd)
+    return (median=med, lower=lower, upper=upper, pd=pd, p_positive=ppos)
 end

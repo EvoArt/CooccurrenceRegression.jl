@@ -45,6 +45,7 @@
             @test post.mean ≈ sum(grid .* w) / sum(w) atol = 5e-3
             below = c[searchsortedfirst(grid, 0.0)]
             @test post.pd ≈ max(below, 1 - below) atol = 5e-3
+            @test post.p_positive ≈ 1 - below atol = 5e-3
             @test post.lower < post.median < post.upper
         end
         narrow = affinity_posterior(3, 5, 9, 12; level=0.5)
@@ -62,6 +63,7 @@
         @test r.median[2, 1] == r.median[1, 2]
         @test r.lower[2, 1] < r.median[2, 1] < r.upper[2, 1]
         @test 0.5 <= r.pd[2, 1] <= 1
+        @test r.p_positive[2, 1] ≈ (r.median[2, 1] > 0 ? r.pd[2, 1] : 1 - r.pd[2, 1])
         K, m, N = cooccurrence_counts(Y)
         @test r.median[2, 1] == affinity_posterior(K[2, 1], m[2], m[1], N).median
     end
