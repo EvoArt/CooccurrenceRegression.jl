@@ -1,5 +1,5 @@
 # Affinity of a single pair of species: maximum likelihood, maximum a posteriori and full
-# posterior summaries. Depends only on Base and fnch.jl.
+# posterior summaries. Depends only on Base, fnch.jl and site_weights.jl.
 
 """
     cooccurrence_counts(Y; occupied_only=false) -> (K, m, N)
@@ -25,9 +25,12 @@ function cooccurrence_counts(Y::AbstractMatrix; occupied_only::Bool=false)
     return K, m, N
 end
 
-# Root of the decreasing function h(α) = k - E[K | α] - τ α, by bisection.
-function _affinity_root(k, mi, mj, N, τ)
-    h(α) = fnch_logpdf_and_gradient(k, mi, mj, N, α)[2] - τ * α
+# Root of the decreasing function h(α) = k - E[K | α] - τ α, by bisection. `lpg(α)` returns
+# the log likelihood and its derivative.
+_affinity_root(k, mi, mj, N, τ) = _affinity_root(α -> fnch_logpdf_and_gradient(k, mi, mj, N, α), τ)
+
+function _affinity_root(lpg, τ)
+    h(α) = lpg(α)[2] - τ * α
     lo, hi = -1.0, 1.0
     while h(lo) < 0
         lo *= 2
@@ -127,10 +130,14 @@ function affinity_posterior(k::Integer, mi::Integer, mj::Integer, N::Integer;
     prior_sd > 0 || throw(ArgumentError("prior_sd must be positive"))
     0 < level < 1 || throw(ArgumentError("level must lie between 0 and 1"))
     npoints >= 3 || throw(ArgumentError("npoints must be at least 3"))
-    τ = 1 / prior_sd^2
-    logpost(α) = fnch_logpdf(k, mi, mj, N, α) - τ * α^2 / 2
+    return _posterior_summary(α -> fnch_logpdf_and_gradient(k, mi, mj, N, α), prior_sd, level, npoints)
+end
 
-    a0 = _affinity_root(k, mi, mj, N, τ)
+function _posterior_summary(lpg, prior_sd, level, npoints)
+    τ = 1 / prior_sd^2
+    logpost(α) = lpg(α)[1] - τ * α^2 / 2
+
+    a0 = _affinity_root(lpg, τ)
     p0 = logpost(a0)
     left = a0 - _posterior_reach(logpost, a0, p0, -1, 40.0)
     right = a0 + _posterior_reach(logpost, a0, p0, 1, 40.0)
@@ -162,11 +169,16 @@ function _interpolate(xs, ys, x)
 end
 
 """
-    pairwise_affinity(Y; prior_sd=4.0, level=0.95)
+    pairwise_affinity(Y; prior_sd=4.0, level=0.95, site_weights=false)
 
 Posterior summaries of the affinity of every pair of species in the `N × S` presence/absence
 matrix `Y` (rows are sites, columns are species), each pair analysed on its own with the
 prior `α ~ Normal(0, prior_sd)`.
+
+With `site_weights=true` the likelihood is the site-weighted one, with site effects estimated
+for each pair with that pair left out (see [`site_weighted_pairs`](@ref)), so that differences
+in richness between sites do not appear as associations. Known site effects can be given
+instead as a vector, `site_weights = b`, one per row of `Y`.
 
 Returns a named tuple of symmetric `S × S` matrices: `median`, `lower`, `upper` (credible
 interval of probability `level`), `pd` (probability of direction) and `p_positive`
@@ -175,18 +187,28 @@ the diagonal and for species present at none or all of the sites.
 
 See [`affinity_posterior`](@ref) for a single pair.
 """
-function pairwise_affinity(Y::AbstractMatrix; prior_sd::Real=4.0, level::Real=0.95)
-    K, m, N = cooccurrence_counts(Y)
-    S = length(m)
+function pairwise_affinity(Y::AbstractMatrix; prior_sd::Real=4.0, level::Real=0.95, site_weights=false)
+    S = size(Y, 2)
     med, lower, upper, pd, ppos = (fill(NaN, S, S) for _ in 1:5)
-    for j in 1:S-1, i in j+1:S
-        (0 < m[i] < N && 0 < m[j] < N) || continue
-        post = affinity_posterior(K[i, j], m[i], m[j], N; prior_sd, level)
+    function store!(i, j, post)
         med[i, j] = med[j, i] = post.median
         lower[i, j] = lower[j, i] = post.lower
         upper[i, j] = upper[j, i] = post.upper
         pd[i, j] = pd[j, i] = post.pd
         ppos[i, j] = ppos[j, i] = post.p_positive
+    end
+    if site_weights === false
+        K, m, N = cooccurrence_counts(Y)
+        for j in 1:S-1, i in j+1:S
+            (0 < m[i] < N && 0 < m[j] < N) || continue
+            store!(i, j, affinity_posterior(K[i, j], m[i], m[j], N; prior_sd, level))
+        end
+    else
+        prior_sd > 0 || throw(ArgumentError("prior_sd must be positive"))
+        b = site_weights === true ? nothing : site_weights
+        for p in site_weighted_pairs(Y; b)
+            store!(p.i, p.j, _posterior_summary(α -> _weighted_logpdf_and_gradient(p, α), prior_sd, level, 1001))
+        end
     end
     return (median=med, lower=lower, upper=upper, pd=pd, p_positive=ppos)
 end

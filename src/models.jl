@@ -83,6 +83,22 @@ end
     end
 end
 
+# Site-weighted likelihood: one precomputed `WeightedPair` per informative pair.
+@model function weighted_regression(Xs,pairs,n_obs,n_X;priors =[4.0,1.0,1.0])
+    α ~ Normal(0.0,priors[1])
+    β ~ filldist(Normal(0.0,priors[2]),n_X)
+    λ ~ filldist(Normal(0.0,priors[3]),n_obs)
+    lp = 0.0
+    for p in pairs
+        μ = α+λ[p.i] +λ[p.j]
+        for pred in 1:n_X
+            μ += β[pred]*Xs[pred,p.i,p.j]
+        end
+        lp += weighted_logpdf(p, μ)
+    end
+    Turing.@addlogprob! lp
+end
+
 # Automatic differentiation backend
 
 # Provisional crossover; to be measured (see benchmarks). Forward mode costs grow with the
@@ -155,6 +171,12 @@ the order the explanatory variables were given) and `λ[i]` (in the order of the
 
   The site types share the coefficients `β` and each has its own intercept `α[l]` and
   species effects `λ[i, l]` (types in sorted order).
+- `site_weights=false`: if `true`, sites are not treated as equally available. The likelihood
+  is the site-weighted one, with site effects from a logistic model with species and site
+  effects, re-estimated for each pair with that pair left out (see
+  [`site_weighted_pairs`](@ref)), so that differences in richness between sites do not
+  appear as affinity. Known site effects can be given instead as a vector, one per row of `Y`.
+  Cannot be combined with `strata`.
 - `drop_lambda=false`: if `true`, the species effects are left out of the returned chain.
 
 # Example
@@ -166,7 +188,18 @@ X = abs.(t .- t')                      # pairwise trait distance
 chn = cooccurrence_regression(X, Y)
 ```
 """
-function cooccurrence_regression(Xs::Vector,Y,n_iter::Real=1000;drop_lambda=false,alpha_sd =4.0,beta_sd = 1.0,lambda_sd =1.0,n_adapts=100,delta=0.65,adtype=nothing,strata=nothing)
+function cooccurrence_regression(Xs::Vector,Y,n_iter::Real=1000;drop_lambda=false,alpha_sd =4.0,beta_sd = 1.0,lambda_sd =1.0,n_adapts=100,delta=0.65,adtype=nothing,strata=nothing,site_weights=false)
+    if site_weights !== false
+        strata === nothing || throw(ArgumentError("site_weights and strata cannot be combined"))
+        n_obs = size(Y, 2)
+        n_X = length(Xs)
+        X_3D = _stack(Xs, n_obs)
+        pairs = site_weighted_pairs(Y; b = site_weights === true ? nothing : site_weights)
+        inference_model = weighted_regression(X_3D, pairs, n_obs, n_X; priors =[alpha_sd,beta_sd,lambda_sd])
+        adtype = something(adtype, default_adtype(1 + n_X + n_obs))
+        chn = Turing.sample(inference_model, NUTS(n_adapts,delta; adtype=adtype),n_iter)
+        return drop_lambda ? _drop_lambda(chn) : chn
+    end
     if strata !== nothing
         length(strata) == size(Y, 1) || throw(DimensionMismatch(
             "strata has length $(length(strata)); expected one entry for each of the $(size(Y, 1)) sites (rows) of Y"))

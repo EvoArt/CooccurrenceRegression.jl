@@ -93,6 +93,28 @@ site_type = rand(["intact", "invaded"], 30)
 chn = cooccurrence_regression(X, Y; strata=site_type)
 ```
 
+## Sites that differ in richness
+
+FNCH treats every site as equally available to every species. When sites differ in richness
+(habitat quality, area, sampling effort, sequencing depth), every species is more likely to be
+found at the richer sites, and most pairs then appear positively associated. With
+`site_weights=true` the likelihood weights each site by its effect in a logistic model with
+species and site effects, estimated for each pair with that pair left out:
+
+```julia
+res = pairwise_affinity(Y; site_weights=true)
+chn = cooccurrence_regression(X, Y; site_weights=true)
+```
+
+Known site effects can be given instead, `site_weights = b`. To check an analysis, repeat it on
+`swap_null(Y)`, a random matrix with the same row and column totals but no associations: it
+should find few.
+
+Conditioning on richness removes part of the signal if associations are themselves a cause of
+differences in richness, so whether to use site weights is a modelling decision.
+
+## Sampling
+
 Sampling uses NUTS from [Turing.jl](https://turinglang.org/), which this package re-exports,
 and the result is an [`MCMCChains.Chains`](https://turinglang.org/MCMCChains.jl/stable/) object,
 so the usual summaries and diagnostics apply:
