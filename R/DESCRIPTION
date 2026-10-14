@@ -1,0 +1,15 @@
+Package: CooccurrenceRegression
+Title: Bayesian Estimation of Co-Occurrence Affinity with Dyadic Regression
+Version: 0.0.2
+Authors@R: person("Arthur", "Newbury", email = "a.r.newbury@exeter.ac.uk", role = c("aut", "cre"))
+Description: R interface to the Julia package CooccurrenceRegression.jl. Estimates the
+    affinity (log odds ratio of Fisher's noncentral hypergeometric distribution) of pairs of
+    species from presence/absence data, and fits Bayesian regressions of co-occurrence on
+    pairwise explanatory variables such as trait or phylogenetic distance.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Imports: JuliaCall (>= 0.17.5), posterior, tools
+Suggests: testthat (>= 3.0.0)
+SystemRequirements: Julia (>= 1.10)
+Config/testthat/edition: 3
+Config/roxygen2/version: 8.1.0

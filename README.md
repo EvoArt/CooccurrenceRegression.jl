@@ -147,6 +147,20 @@ use in your own Turing models:
 end
 ```
 
+## R and Python
+
+Thin wrappers with the same functions are in `R/` and `python/`; Julia does the computation.
+
+```r
+remotes::install_github("EvoArt/CooccurrenceRegression.jl", subdir = "R")
+```
+
+```
+pip install "git+https://github.com/EvoArt/CooccurrenceRegression.jl#subdirectory=python"
+```
+
+See the README in each folder.
+
 ## Examples
 
 `examples/beetles.jl` reproduces the dung beetle analyses from the paper and

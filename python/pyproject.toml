@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cooccurrence-regression"
+version = "0.0.2"
+description = "Bayesian estimation of co-occurrence affinity with dyadic regression (Python interface to CooccurrenceRegression.jl)"
+readme = "README.md"
+authors = [{ name = "Arthur Newbury", email = "a.r.newbury@exeter.ac.uk" }]
+license = { text = "MIT" }
+requires-python = ">=3.9"
+dependencies = ["juliacall>=0.9.20", "numpy", "pandas"]
+
+[project.optional-dependencies]
+arviz = ["arviz"]
+test = ["pytest"]
+
+[project.urls]
+Source = "https://github.com/EvoArt/CooccurrenceRegression.jl"
+
+[tool.setuptools.package-data]
+cooccurrence_regression = ["juliapkg.json"]

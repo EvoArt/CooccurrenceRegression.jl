@@ -13,6 +13,7 @@ include("pairwise.jl")
 include("distances.jl")
 include("null.jl")
 include("models.jl")
+include("interop.jl")
 export cooccurrence_regression, default_adtype
 export fnch_logpdf, fnch_logpdf_and_gradient, fnch_mean, LogOddsFNCH
 export cooccurrence_counts, affinity_mle, affinity_map, affinity_posterior, pairwise_affinity

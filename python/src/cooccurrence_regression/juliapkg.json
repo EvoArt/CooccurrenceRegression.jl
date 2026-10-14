@@ -1,0 +1,9 @@
+{
+  "julia": "1.10",
+  "packages": {
+    "CooccurrenceRegression": {
+      "uuid": "b11753cd-0d5a-47ad-8b8f-99db3fa4a09b",
+      "url": "https://github.com/EvoArt/CooccurrenceRegression.jl"
+    }
+  }
+}
