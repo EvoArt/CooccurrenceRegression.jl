@@ -210,7 +210,7 @@ function cooccurrence_regression(Xs::Vector,Y,n_iter::Real=1000;drop_lambda=fals
         pairs = site_weighted_pairs(Y; b = site_weights === true ? nothing : site_weights)
         inference_model = weighted_regression(X_3D, pairs, n_obs, n_X; priors =[alpha_sd,beta_sd,lambda_sd])
         adtype = something(adtype, default_adtype(1 + n_X + n_obs))
-        chn = Turing.sample(inference_model, NUTS(n_adapts,delta; adtype=adtype),n_iter)
+        chn = Turing.sample(inference_model, NUTS(n_adapts,delta; adtype=adtype),n_iter; chain_type=MCMCChains.Chains)
         return drop_lambda ? _drop_lambda(chn) : chn
     end
     if strata !== nothing
@@ -225,7 +225,7 @@ function cooccurrence_regression(Xs::Vector,Y,n_iter::Real=1000;drop_lambda=fals
         end
         inference_model = strata_regression(X_3D, P, n_obs, n_X; priors =[alpha_sd,beta_sd,lambda_sd], lik)
         adtype = something(adtype, default_adtype(length(P) * (1 + n_obs) + n_X))
-        chn = Turing.sample(inference_model, NUTS(n_adapts,delta; adtype=adtype),n_iter)
+        chn = Turing.sample(inference_model, NUTS(n_adapts,delta; adtype=adtype),n_iter; chain_type=MCMCChains.Chains)
         return drop_lambda ? _drop_lambda(chn) : chn
     end
     k, m, n_sample = cooccurrence_counts(Y)
@@ -235,7 +235,7 @@ function cooccurrence_regression(Xs::Vector,Y,n_iter::Real=1000;drop_lambda=fals
 
     inference_model = regression(X_3D, k, n_obs, n_sample, m; priors =[alpha_sd,beta_sd,lambda_sd], lik)
     adtype = something(adtype, default_adtype(1 + n_X + n_obs))
-    chn = Turing.sample(inference_model, NUTS(n_adapts,delta; adtype=adtype),n_iter)
+    chn = Turing.sample(inference_model, NUTS(n_adapts,delta; adtype=adtype),n_iter; chain_type=MCMCChains.Chains)
 
     drop_lambda ? _drop_lambda(chn) : chn
 end
@@ -302,7 +302,7 @@ function cooccurrence_regression(Xs::Vector,Y,g::AbstractVector,n_iter::Real=100
         n_params = 1 + size(Y,2) + 2n_X + n_X*length(P)
     end
     adtype = something(adtype, default_adtype(n_params))
-    chn = Turing.sample(inference_model, NUTS(n_adapts,delta; adtype=adtype),n_iter)
+    chn = Turing.sample(inference_model, NUTS(n_adapts,delta; adtype=adtype),n_iter; chain_type=MCMCChains.Chains)
 
     drop_lambda ? _drop_lambda(chn) : chn
 end

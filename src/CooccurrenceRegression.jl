@@ -3,7 +3,7 @@ module CooccurrenceRegression
 using Reexport
 
 @reexport using Turing
-import ADTypes, ChainRulesCore, Distributions, ForwardDiff, Mooncake, Random, Statistics
+import ADTypes, ChainRulesCore, Distributions, ForwardDiff, MCMCChains, Mooncake, Random, Statistics
 include("fnch.jl")
 include("site_weights.jl")
 include("jaccard.jl")
