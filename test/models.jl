@@ -54,7 +54,8 @@ end
         K[i, j] = K[j, i] = rand(rng, LogOddsFNCH(m[i], m[j], N, β * X[i, j]))
     end
     model = CooccurrenceRegression.regression(reshape(X, 1, S, S), K, S, N, m)
-    chn = sample(rng, model, NUTS(200, 0.65; adtype=ADTypes.AutoMooncake(config=nothing)), 300; progress=false)
+    chn = sample(rng, model, NUTS(200, 0.65; adtype=ADTypes.AutoMooncake(config=nothing)), 300;
+                 progress=false, chain_type=CooccurrenceRegression.MCMCChains.Chains)
     est = vec(chn[Symbol("β[1]")])
     @test Statistics.quantile(est, 0.005) < β < Statistics.quantile(est, 0.995)
     @test abs(Statistics.mean(est) - β) < 0.25
