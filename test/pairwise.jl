@@ -109,3 +109,10 @@ end
     # the same overlap is weaker evidence of association within a smaller range
     @test affinity_map(K[2, 1], m[2], m[1], No) < affinity_map(K[2, 1], m[2], m[1], N)
 end
+
+@testset "standardise within groups of two" begin
+    X = trait_distance([1.0, 2.0, 4.0, 7.0, 3.0])
+    Z = standardise(X, ["a", "a", "b", "b", "b"])   # group a has a single pair
+    @test Z[1, 2] == Z[2, 1] == 0
+    @test Z[3:5, 3:5] ≈ standardise(X[3:5, 3:5])
+end

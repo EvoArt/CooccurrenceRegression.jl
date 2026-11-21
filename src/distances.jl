@@ -67,7 +67,8 @@ end
 Standardise within groups: for each group in `g` (one entry per species), the off-diagonal
 elements of `X` between species of that group are centred and scaled to mean 0 and standard
 deviation 1. Elements between species of different groups, which are not used by the
-within-group models of [`cooccurrence_regression`](@ref), are set to 0.
+within-group models of [`cooccurrence_regression`](@ref), are set to 0, as are the
+elements of a group whose pairs all share one value (any group of two species).
 """
 function standardise(X::AbstractMatrix, g::AbstractVector)
     S = size(X, 1)
@@ -77,7 +78,11 @@ function standardise(X::AbstractMatrix, g::AbstractVector)
     for group in unique(g)
         inds = findall(==(group), g)
         length(inds) > 1 || continue
-        Z[inds, inds] .= standardise(X[inds, inds])
+        Xg = X[inds, inds]
+        # a group whose pairs all share one value (e.g. any group of two species)
+        # has nothing to scale: leave it centred at 0
+        Statistics.std([Xg[i, j] for j in axes(Xg, 2) for i in axes(Xg, 1) if i != j]) > 0 || continue
+        Z[inds, inds] .= standardise(Xg)
     end
     return Z
 end
