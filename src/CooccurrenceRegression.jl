@@ -2,7 +2,10 @@ module CooccurrenceRegression
 
 using Reexport
 
-@reexport using Turing
+using Turing
+# Re-export only the chain summaries, not all of Turing and Distributions, whose names
+# (Categorical, scale!, nsamples, setprogress!, ...) clash with Makie and other packages.
+@reexport using MCMCChains: describe, summarystats, Chains
 import ADTypes, ChainRulesCore, Distributions, ForwardDiff, MCMCChains, Mooncake, Random, Statistics
 include("fnch.jl")
 include("site_weights.jl")

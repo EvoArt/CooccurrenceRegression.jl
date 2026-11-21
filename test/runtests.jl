@@ -1,5 +1,6 @@
 using CooccurrenceRegression, Random, Statistics
 using Test
+using Turing
 import ADTypes, ChainRulesCore, DifferentiationInterface, ForwardDiff, Mooncake
 
 include("fnch.jl")

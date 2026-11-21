@@ -119,8 +119,8 @@ differences in richness, so whether to use site weights is a modelling decision.
 
 ## Sampling
 
-Sampling uses NUTS from [Turing.jl](https://turinglang.org/), which this package re-exports,
-and the result is an [`MCMCChains.Chains`](https://turinglang.org/MCMCChains.jl/stable/) object,
+Sampling uses NUTS from [Turing.jl](https://turinglang.org/) (load it with `using Turing` to
+use its own functions), and the result is an [`MCMCChains.Chains`](https://turinglang.org/MCMCChains.jl/stable/) object,
 so the usual summaries and diagnostics apply:
 
 ```julia
