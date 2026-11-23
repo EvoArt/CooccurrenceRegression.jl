@@ -1,6 +1,7 @@
 # CooccurrenceRegression
 
 [![Build Status](https://github.com/EvoArt/CooccurrenceRegression.jl/actions/workflows/CI.yml/badge.svg?branch=master)](https://github.com/EvoArt/CooccurrenceRegression.jl/actions/workflows/CI.yml?query=branch%3Amaster)
+[![Coverage](https://codecov.io/gh/EvoArt/CooccurrenceRegression.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/EvoArt/CooccurrenceRegression.jl)
 
 Bayesian estimation of co-occurrence *affinity*, and regression of affinity on properties of
 pairs of species such as trait or phylogenetic distance.
