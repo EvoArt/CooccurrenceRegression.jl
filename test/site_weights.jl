@@ -67,6 +67,8 @@ end
         y, pullback = ChainRulesCore.rrule(weighted_logpdf, k, lo, logc, α)
         @test y == lp
         @test pullback(1.0)[end] ≈ g
+        y2, ẏ = ChainRulesCore.frule((nothing, nothing, nothing, nothing, 3.0), weighted_logpdf, k, lo, logc, α)
+        @test y2 == lp && ẏ ≈ 3g
         @test ForwardDiff.derivative(f, α) ≈ g
 
         Y, _ = simulate_sites(rng, 30, 6, 1.0)

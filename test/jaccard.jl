@@ -26,6 +26,8 @@
         y, pullback = ChainRulesCore.rrule(jaccard_logpdf, k, mi, mj, N, η)
         @test y == lp
         @test pullback(1.0)[end] ≈ g
+        y2, ẏ = ChainRulesCore.frule((nothing, nothing, nothing, nothing, nothing, 3.0), jaccard_logpdf, k, mi, mj, N, η)
+        @test y2 == lp && ẏ ≈ 3g
         @test ForwardDiff.derivative(f, η) ≈ g
         ks, ms, xs = [3, 0, 7, 5], [(5, 9), (2, 4), (10, 8), (6, 6)], [0.2, -1.0, 0.4, 1.5]
         F(θ) = sum(jaccard_logpdf(ks[i], ms[i][1], ms[i][2], 12, θ[1] + θ[2] * xs[i]) for i in eachindex(ks))

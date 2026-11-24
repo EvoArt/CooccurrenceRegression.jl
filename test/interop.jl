@@ -16,6 +16,9 @@
     @test I.fnch_logpdf(K[2, 1], m[2], m[1], N, [0.0, 1.0]) == fnch_logpdf.(K[2, 1], m[2], m[1], N, [0.0, 1.0])
 
     pw = I.pairwise(Float64.(Y); metric="affinity")
+    @test I.fnch_mean(m[2], m[1], N, [0.0, 0.5]) == fnch_mean.(m[2], m[1], N, [0.0, 0.5])
+    w = rand(rng, N) .+ 0.5
+    @test isequal(I.pairwise(Y; site_weights=w)[1], pairwise_affinity(Y; site_weights=w).median)
     @test isequal(pw[1], pairwise_affinity(Y).median)
     @test isequal(pw[5], pairwise_affinity(Y).p_positive)
 

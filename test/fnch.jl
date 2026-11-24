@@ -97,6 +97,7 @@ end
 @testset "LogOddsFNCH" begin
     d = LogOddsFNCH(5, 9, 12, 0.8)
     @test minimum(d) == 2 && maximum(d) == 5
+    @test params(d) == (5, 9, 12, 0.8)
     @test insupport(d, 3) && !insupport(d, 6) && !insupport(d, 2.5)
     @test logpdf(d, 3) == fnch_logpdf(3, 5, 9, 12, 0.8)
     @test pdf(d, 3) ≈ exp(logpdf(d, 3))
